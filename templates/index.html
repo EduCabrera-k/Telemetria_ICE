@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🛰️ Telemetría Distribuida - Dashboard</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #0d1117; color: #c9d1d9; text-align: center; margin: 0; padding: 20px; }
+        h1 { color: #58a6ff; margin-bottom: 30px; }
+        #contenedor { display: flex; flex-wrap: wrap; justify-content: center; gap: 20px; padding: 10px; }
+        
+        /* Estilo de las tarjetas */
+        .card { background: #161b22; border: 2px solid #30363d; border-radius: 12px; padding: 20px; width: 260px; transition: all 0.3s ease; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
+        .card:hover { transform: translateY(-5px); border-color: #58a6ff; }
+        
+        .nombre { font-weight: bold; font-size: 1.2em; margin-bottom: 15px; padding-bottom: 8px; border-bottom: 1px solid #30363d; }
+        .label { color: #8b949e; font-size: 0.75em; text-transform: uppercase; letter-spacing: 1px; }
+        .val { font-size: 1.6em; font-weight: bold; margin: 8px 0; color: #f0f6fc; }
+        .footer { font-size: 0.7em; color: #484f58; margin-top: 15px; }
+        
+        /* Colores por tipo de conexión */
+        .tipo-ice { border-color: #238636 !important; } /* Verde para agentes Python */
+        .tipo-web { border-color: #1f6feb !important; } /* Azul para visitantes del link */
+        
+        #status-msg { color: #8b949e; font-style: italic; margin-top: 50px; }
+    </style>
+</head>
+<body>
+    <h1>🛰️ Monitor de Telemetría (ZeroC ICE)</h1>
+    <div id="contenedor">
+        <p id="status-msg">Sincronizando con el servidor central...</p>
+    </div>
+
+    <script>
+        // 1. AUTO-REGISTRO: Se ejecuta una sola vez al entrar al link
+   
+   async function autoregistro() {
+    // 1. Intentamos recuperar el nombre guardado
+    let miNombre = localStorage.getItem("telemetria_id");
+
+    // 2. Si no hay nombre guardado, lo preguntamos
+    if (!miNombre) {
+        miNombre = prompt("Bienvenido al Monitor. Por favor, ingresa tu nombre:", "Profesor_Visitante");
+        
+        // Si el usuario cancela o deja vacío, le asignamos uno por defecto
+        if (!miNombre || miNombre.trim() === "") {
+            miNombre = "Invitado_" + Math.floor(Math.random() * 100);
+        }
+        
+        // Guardamos el nombre para que no lo vuelva a pedir al refrescar
+        localStorage.setItem("telemetria_id", miNombre);
+    }
+
+    const infoWeb = {
+        nombre: miNombre, 
+        cores: navigator.hardwareConcurrency || "N/A",
+        plataforma: navigator.platform
+    };
+    
+    // 3. Enviamos el nombre elegido al Monitor
+    try {
+        await fetch('/reportar_web', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(infoWeb)
+        });
+    } catch (e) {
+        console.error("Error al reportar:", e);
+    }
+}
+
+        // 2. ACTUALIZACIÓN: Pide los datos de todos cada 2 segundos
+        async function update() {
+            try {
+                const res = await fetch('/metrics'); 
+                const agentes = await res.json();
+                const container = document.getElementById('contenedor');
+                
+                // Si el objeto está vacío, mostramos un aviso
+                if (Object.keys(agentes).length === 0) {
+                    container.innerHTML = `<p id="status-msg">Conectado. Esperando que los agentes de ICE reporten...</p>`;
+                    return;
+                }
+
+                let html = "";
+                for (let nombre in agentes) {
+                    const info = agentes[nombre];
+                    const esWeb = info.tipo === "Web (Profesor)";
+                    const claseTipo = esWeb ? "tipo-web" : "tipo-ice";
+
+                    html += `
+                        <div class="card ${claseTipo}">
+                            <div class="nombre" style="color: ${esWeb ? '#58a6ff' : '#3fb950'}">${nombre}</div>
+                            <span class="label">${esWeb ? 'Núcleos de CPU' : 'Uso de CPU'}</span>
+                            <div class="val">${esWeb ? info.ram : info.cpu + '%'}</div>
+                            <span class="label">${esWeb ? 'Sistema Operativo' : 'RAM (Usada/Total)'}</span>
+                            <div class="val" style="font-size: 1.1em;">${esWeb ? info.uptime : info.ram}</div>
+                            <div class="footer">${esWeb ? 'Conectado vía Navegador' : 'Sinc: ' + info.uptime}</div>
+                        </div>`;
+                }
+                container.innerHTML = html;
+            } catch (e) { 
+                document.getElementById('contenedor').innerHTML = 
+                    `<p id="status-msg" style="color: #f85149;">⚠️ Error: No se puede conectar con el monitor. <br> Verifique que Monitor_Principal.py esté corriendo.</p>`;
+            }
+        }
+
+        // Iniciar procesos
+        autoregistro();
+        setInterval(update, 2000); // Actualiza cada 2 segundos
+        update(); // Carga inicial
+    </script>
+</body>
+</html>
